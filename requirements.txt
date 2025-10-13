@@ -1,0 +1,7 @@
+streamlit
+sqlalchemy
+bcrypt
+pandas
+matplotlib
+plotly
+openpyxl
