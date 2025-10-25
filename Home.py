@@ -1,6 +1,6 @@
-# Home.py — MyFinanceHub (integrated)
+# Home.py — MyFinanceHub (fully integrated & fixed)
 # Features: login/register, horizontal nav, light/dark toggle, expenses, incomes, budgets,
-# charts (plotly), export, profile settings (change password), login analytics, email.
+# charts (plotly), export, profile settings, login analytics, email.
 #
 # Requirements: streamlit, pandas, plotly, openpyxl, python-dotenv
 # Put your logo file (Hublogowithcharts.png) in same folder.
@@ -13,48 +13,18 @@ import plotly.express as px
 from io import BytesIO
 from datetime import datetime, timedelta
 import os
-
-# ===============================
-# Email Functionality Setup
-# ===============================
+from dotenv import load_dotenv
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from dotenv import load_dotenv
 
-# Load environment variables locally
+# ------------------------
+# Load environment variables
+# ------------------------
 load_dotenv()
 
-def get_email_credentials():
-    """Fetch email credentials from environment variables or Streamlit secrets."""
-    user = os.getenv("EMAIL_USER") or st.secrets.get("EMAIL_USER")
-    passwd = os.getenv("EMAIL_PASS") or st.secrets.get("EMAIL_PASS")
-    return user, passwd
-
-def send_email(recipient_email, subject, body):
-    """
-    Sends an email using Gmail SMTP server.
-    Loads credentials from environment variables or Streamlit secrets.
-    """
-    sender_email, sender_password = get_email_credentials()
-    if not sender_email or not sender_password:
-        st.error("❌ Email credentials not set. Use .env or Streamlit Secrets.")
-        return False
-    try:
-        msg = MIMEMultipart()
-        msg["From"] = sender_email
-        msg["To"] = recipient_email
-        msg["Subject"] = subject
-        msg.attach(MIMEText(body, "plain"))
-
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-            server.starttls()
-            server.login(sender_email, sender_password)
-            server.send_message(msg)
-        return True
-    except Exception as e:
-        st.error(f"❌ Email sending failed: {e}")
-        return False
+EMAIL_USER = os.getenv("EMAIL_USER") or st.secrets.get("EMAIL_USER")
+EMAIL_PASS = os.getenv("EMAIL_PASS") or st.secrets.get("EMAIL_PASS")
 
 # ------------------------
 # Page config
@@ -62,7 +32,7 @@ def send_email(recipient_email, subject, body):
 st.set_page_config(page_title="MyFinanceHub", page_icon="💰", layout="wide")
 
 # ------------------------
-# Styling snippets for light/dark mode
+# Light/Dark CSS
 # ------------------------
 LIGHT_CSS = """
 <style>
@@ -83,22 +53,17 @@ div.stButton > button { background-color:#06b6d4; color:#042028; border-radius:8
 
 if "theme" not in st.session_state:
     st.session_state["theme"] = "light"
+
 st.markdown(LIGHT_CSS if st.session_state["theme"] == "light" else DARK_CSS, unsafe_allow_html=True)
 
-# apply CSS based on theme
-if st.session_state["theme"] == "light":
-    st.markdown(LIGHT_CSS, unsafe_allow_html=True)
-else:
-    st.markdown(DARK_CSS, unsafe_allow_html=True)
-
 # ------------------------
-# Database setup (SQLite)
+# Database setup
 # ------------------------
 DB_PATH = os.path.join(os.path.dirname(__file__), "users.db")
 conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 c = conn.cursor()
 
-# Users table (store username, password, email optional)
+# Users table
 c.execute(
     """CREATE TABLE IF NOT EXISTS users (
         username TEXT PRIMARY KEY,
@@ -106,8 +71,7 @@ c.execute(
         email TEXT
     )"""
 )
-
-# Expenses table
+# Expenses
 c.execute(
     """CREATE TABLE IF NOT EXISTS expenses (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,8 +82,7 @@ c.execute(
         description TEXT
     )"""
 )
-
-# Incomes table
+# Incomes
 c.execute(
     """CREATE TABLE IF NOT EXISTS incomes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -129,8 +92,7 @@ c.execute(
         description TEXT
     )"""
 )
-
-# Budgets table (per user, category, month, year)
+# Budgets
 c.execute(
     """CREATE TABLE IF NOT EXISTS budgets (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -141,7 +103,6 @@ c.execute(
         amount REAL
     )"""
 )
-
 # Login analytics
 c.execute(
     """CREATE TABLE IF NOT EXISTS logins (
@@ -150,7 +111,6 @@ c.execute(
         ts TEXT
     )"""
 )
-
 conn.commit()
 
 # ------------------------
@@ -159,7 +119,6 @@ conn.commit()
 CATEGORIES = ["Food", "Transportation", "Utilities", "Entertainment", "Health", "Education", "Other"]
 
 def password_valid(pw: str) -> bool:
-    """Simple password rule: >=8 chars, upper, lower, digit."""
     return bool(re.match(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$', pw))
 
 def register_user(username: str, password: str, email: str = None):
@@ -188,9 +147,8 @@ def get_expenses_df(username) -> pd.DataFrame:
     rows = c.fetchall()
     df = pd.DataFrame(rows, columns=["ID", "Username", "Category", "Amount", "Date", "Description"])
     if not df.empty:
-        # convert 'Date' safely to datetime
-        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")  
-        df = df.dropna(subset=["Date"])  # remove rows with invalid/missing dates
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+        df = df.dropna(subset=["Date"])
     return df
 
 def add_income(username, amount, date, description):
@@ -220,39 +178,35 @@ def get_budgets(username, month, year) -> pd.DataFrame:
     return df
 
 def send_email(recipient, subject, body, html=False):
+    if not EMAIL_USER or not EMAIL_PASS:
+        st.error("Email not configured. Set EMAIL_USER and EMAIL_PASS in .env or Streamlit secrets.")
+        return False
     msg = MIMEMultipart("alternative")
-    msg["From"] = os.getenv("EMAIL_USER")
+    msg["From"] = EMAIL_USER
     msg["To"] = recipient
     msg["Subject"] = subject
-
-    if html:
-        msg.attach(MIMEText(body, "html"))
-    else:
-        msg.attach(MIMEText(body, "plain"))
-
-    with smtplib.SMTP("smtp.gmail.com", 587) as server:
-        server.starttls()
-        server.login(os.getenv("EMAIL_USER"), os.getenv("EMAIL_PASS"))
-        server.send_message(msg)
-
-    return True
-
+    msg.attach(MIMEText(body, "html" if html else "plain"))
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.starttls()
+            server.login(EMAIL_USER, EMAIL_PASS)
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        st.error(f"Email sending failed: {e}")
+        return False
 
 # ------------------------
 # Session state defaults
 # ------------------------
-if "logged_in" not in st.session_state:
-    st.session_state["logged_in"] = False
-if "username" not in st.session_state:
-    st.session_state["username"] = None
-if "current_page" not in st.session_state:
-    st.session_state["current_page"] = "Welcome"
+for key, val in [("logged_in", False), ("username", None), ("current_page", "Welcome")]:
+    if key not in st.session_state:
+        st.session_state[key] = val
 
 # ------------------------
-# Top horizontal navigation (responsive with columns)
+# Top navigation
 # ------------------------
 def top_nav():
-    # Navigation labels and internal page keys
     nav = [
         ("🏠 Dashboard", "Welcome"),
         ("💸 Expenses", "Add/View"),
@@ -268,6 +222,7 @@ def top_nav():
             if st.button(label, key=f"topnav_{i}"):
                 st.session_state["current_page"] = key
                 st.rerun()
+
 
 # ------------------------
 # Welcome / Dashboard page (polished with metrics + responsive nav)
@@ -409,39 +364,63 @@ def page_add_view_expenses():
 
         st.dataframe(filtered[["No.", "Date", "Category", "Amount", "Description"]], use_container_width=True)
 
-        # Edit/Delete selection by No. (map to actual DB ID)
-        st.subheader("✏️ Edit / Delete")
-        selected_no = st.selectbox("Select No.", options=filtered["No."])
-        # Map No. back to DB ID
-        selected_row = filtered[filtered["No."] == selected_no].iloc[0]
-        # find DB ID by matching Date+Amount+Description (safer method could use stored DB ID column)
-        # we still have the original ID in column 'ID' — use it:
-        db_id = selected_row["ID"]
+        st.subheader("✏️ Edit / Delete Expense")
+        # 1️⃣ Fetch expenses for logged-in user
+        c.execute("SELECT id, date, category, description, amount FROM expenses WHERE username=?", (st.session_state["username"],))
+        rows = c.fetchall()
 
-        # Editable form
-        new_date = st.date_input("Date", pd.to_datetime(selected_row["Date"]))
-        new_cat = st.selectbox("Category", options=CATEGORIES, index=CATEGORIES.index(selected_row["Category"]) if selected_row["Category"] in CATEGORIES else 0)
-        new_desc = st.text_input("Description", value=selected_row["Description"])
-        new_amount = st.number_input("Amount (R)", min_value=0.0, value=float(selected_row["Amount"]))
+        # Convert to DataFrame
+        filtered = pd.DataFrame(rows, columns=["ID", "Date", "Category", "Description", "Amount"])
 
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("Update Expense"):
-                c.execute("""UPDATE expenses SET date=?, category=?, description=?, amount=? WHERE id=? AND username=?""",
-                          (new_date.strftime("%Y-%m-%d"), new_cat, new_desc, new_amount, db_id, st.session_state["username"]))
-                conn.commit()
-                st.success("Updated.")
-                st.rerun()
-        with c2:
-            confirm = st.checkbox("Confirm delete")
-            if st.button("Delete Expense"):
-                if confirm:
-                    c.execute("DELETE FROM expenses WHERE id=? AND username=?", (db_id, st.session_state["username"]))
+        if not filtered.empty:
+            # 2️⃣ Select expense to edit/delete (use ID for uniqueness)
+            selected_id = st.selectbox(
+                "Select Expense to Edit/Delete",
+                options=filtered["ID"],
+                format_func=lambda x: f"No. {x} | {filtered[filtered['ID']==x]['Date'].values[0]} | "
+                                    f"{filtered[filtered['ID']==x]['Category'].values[0]} | "
+                                    f"R{filtered[filtered['ID']==x]['Amount'].values[0]:.2f}"
+            )
+            
+            # 3️⃣ Get the selected row
+            selected_row = filtered[filtered["ID"] == selected_id].iloc[0]
+
+            # 4️⃣ Editable fields
+            new_date = st.date_input("Date", pd.to_datetime(selected_row["Date"]))
+            new_cat = st.selectbox(
+                "Category",
+                options=CATEGORIES,
+                index=CATEGORIES.index(selected_row["Category"]) if selected_row["Category"] in CATEGORIES else 0
+            )
+            new_desc = st.text_input("Description", value=selected_row["Description"])
+            new_amount = st.number_input("Amount (R)", min_value=0.0, value=float(selected_row["Amount"]))
+
+            # 5️⃣ Buttons for update and delete
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("Update Expense"):
+                    c.execute("""UPDATE expenses 
+                                SET date=?, category=?, description=?, amount=? 
+                                WHERE id=? AND username=?""",
+                            (new_date.strftime("%Y-%m-%d"), new_cat, new_desc, new_amount,
+                            selected_id, st.session_state["username"]))
                     conn.commit()
-                    st.success("Deleted.")
+                    st.success("✅ Expense updated.")
                     st.rerun()
-                else:
-                    st.warning("Check confirm to delete.")
+
+            with c2:
+                confirm = st.checkbox("Confirm delete", key=f"del_{selected_id}")
+                if st.button("Delete Expense"):
+                    if confirm:
+                        c.execute("DELETE FROM expenses WHERE id=? AND username=?", 
+                                (selected_id, st.session_state["username"]))
+                        conn.commit()
+                        st.success("🗑️ Expense deleted.")
+                        st.rerun()
+                    else:
+                        st.warning("Check 'Confirm delete' to delete this expense.")
+        else:
+            st.info("No expenses found.")
 
 # ------------------------
 # Income page
@@ -778,30 +757,23 @@ def page_auth():
                     st.error(msg)
 
 # ------------------------
-# Router: render pages based on session state
+# Router
 # ------------------------
 def router():
     if not st.session_state["logged_in"]:
         page_auth()
         return
-
     page = st.session_state.get("current_page", "Welcome")
-    if page == "Welcome":
-        page_welcome()
-    elif page == "Add/View":
-        page_add_view_expenses()
-    elif page == "Income":
-        page_income()
-    elif page == "Budgets":
-        page_budgets()
-    elif page == "Insights":
-        page_insights()
-    elif page == "Export":
-        page_export()
-    elif page == "Profile":
-        page_profile()
-    else:
-        page_welcome()
+    pages = {
+        "Welcome": page_welcome,
+        "Add/View": page_add_view_expenses,
+        "Income": page_income,
+        "Budgets": page_budgets,
+        "Insights": page_insights,
+        "Export": page_export,
+        "Profile": page_profile
+    }
+    pages.get(page, page_welcome)()
 
 # ------------------------
 # Run app
