@@ -1,8 +1,8 @@
 # Home.py — MyFinanceHub (integrated)
 # Features: login/register, horizontal nav, light/dark toggle, expenses, incomes, budgets,
-# charts (plotly), export, profile settings (change password), login analytics, email placeholder.
+# charts (plotly), export, profile settings (change password), login analytics, email.
 #
-# Requirements: streamlit, pandas, plotly, openpyxl
+# Requirements: streamlit, pandas, plotly, openpyxl, python-dotenv
 # Put your logo file (Hublogowithcharts.png) in same folder.
 
 import streamlit as st
@@ -21,40 +21,36 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
-import os
 
-
-# Load environment variables from .env or Streamlit secrets
+# Load environment variables locally
 load_dotenv()
+
+def get_email_credentials():
+    """Fetch email credentials from environment variables or Streamlit secrets."""
+    user = os.getenv("EMAIL_USER") or st.secrets.get("EMAIL_USER")
+    passwd = os.getenv("EMAIL_PASS") or st.secrets.get("EMAIL_PASS")
+    return user, passwd
 
 def send_email(recipient_email, subject, body):
     """
     Sends an email using Gmail SMTP server.
-    Loads credentials securely from environment variables or Streamlit secrets.
+    Loads credentials from environment variables or Streamlit secrets.
     """
+    sender_email, sender_password = get_email_credentials()
+    if not sender_email or not sender_password:
+        st.error("❌ Email credentials not set. Use .env or Streamlit Secrets.")
+        return False
     try:
-        # Try environment variables first
-        sender_email = os.getenv("EMAIL_USER")
-        sender_password = os.getenv("EMAIL_PASS")
-
-        # Fallback to Streamlit secrets if available
-        if not sender_email and "EMAIL_USER" in st.secrets:
-            sender_email = st.secrets["EMAIL_USER"]
-            sender_password = st.secrets["EMAIL_PASS"]
-
-        # Email setup
         msg = MIMEMultipart()
         msg["From"] = sender_email
         msg["To"] = recipient_email
         msg["Subject"] = subject
         msg.attach(MIMEText(body, "plain"))
 
-        # Connect to Gmail SMTP server
         with smtplib.SMTP("smtp.gmail.com", 587) as server:
             server.starttls()
             server.login(sender_email, sender_password)
             server.send_message(msg)
-
         return True
     except Exception as e:
         st.error(f"❌ Email sending failed: {e}")
@@ -66,35 +62,28 @@ def send_email(recipient_email, subject, body):
 st.set_page_config(page_title="MyFinanceHub", page_icon="💰", layout="wide")
 
 # ------------------------
-# Styling snippets for light/dark mode (simple)
+# Styling snippets for light/dark mode
 # ------------------------
-# Light theme cards
 LIGHT_CSS = """
 <style>
-.metric-card { 
-    background-color: #4F46E5;  /* deep purple */
-    color: #ffffff;              /* white text */
-    padding: 1rem; 
-    border-radius: 12px; 
-}
+body { background: linear-gradient(135deg,#f7fbff,#f0f4ff); color: #0f172a; }
+section[data-testid="stSidebar"] { background-color: #E5E7EB !important; color: #111827; }
+div.stButton > button { background-color:#4F46E5; color:white; border-radius:8px; }
+.metric-card { background-color: #EEF2FF; padding:1rem; border-radius:12px; color:#0f172a; }
 </style>
 """
-
-# Dark theme cards
 DARK_CSS = """
 <style>
-.metric-card { 
-    background-color: #0f1724;  /* dark blue */
-    color: #ffffff; 
-    padding: 1rem; 
-    border-radius: 12px; 
-}
+body { background: linear-gradient(135deg,#0d1117,#111827); color: #e6eef8; }
+section[data-testid="stSidebar"] { background-color: #0b1220 !important; color: #E5E7EB; }
+div.stButton > button { background-color:#06b6d4; color:#042028; border-radius:8px; }
+.metric-card { background-color:#0f1724; padding:1rem; border-radius:12px; color:#e6eef8; }
 </style>
 """
 
-# initialize theme toggle
 if "theme" not in st.session_state:
     st.session_state["theme"] = "light"
+st.markdown(LIGHT_CSS if st.session_state["theme"] == "light" else DARK_CSS, unsafe_allow_html=True)
 
 # apply CSS based on theme
 if st.session_state["theme"] == "light":
